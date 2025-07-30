@@ -13,6 +13,8 @@
 #include <netbase.h>
 #include <node/blockstorage.h>
 #include <primitives/block.h>
+#include <univalue.h>
+#include <util/time.h>
 #include <primitives/transaction.h>
 #include <rpc/server.h>
 #include <serialize.h>
@@ -49,6 +51,7 @@ static const char *MSG_RAWTX     = "rawtx";
 static const char *MSG_RAWWALLETTXMEMPOOL   = "rawwallettx-mempool";
 static const char *MSG_RAWWALLETTXBLOCK     = "rawwallettx-block";
 static const char *MSG_SEQUENCE  = "sequence";
+static const char *MSG_SETTINGS  = "settings";
 
 // Internal function to send multipart message
 static int zmq_send_multipart(void *sock, const void* data, size_t size, ...)
@@ -337,4 +340,21 @@ bool CZMQPublishRawWalletTransactionNotifier::NotifyWalletTransaction(const CTra
         command = MSG_RAWWALLETTXMEMPOOL;
 
     return SendZmqMessage(command, &(*ss.begin()), ss.size());
+}
+
+bool CZMQPublishSettingsNotifier::NotifySettingChanged(const std::string &setting_name, const std::string &old_value, const std::string &new_value, const std::string &source)
+{
+    LogPrint(BCLog::ZMQ, "Publish setting change %s: %s -> %s (%s) to %s\n", 
+             setting_name, old_value, new_value, source, this->address);
+    
+    // Create JSON message with setting change details
+    UniValue notification(UniValue::VOBJ);
+    notification.pushKV("setting", setting_name);
+    notification.pushKV("old_value", old_value);
+    notification.pushKV("new_value", new_value);
+    notification.pushKV("source", source);
+    notification.pushKV("timestamp", GetTime());
+    
+    std::string json_str = notification.write();
+    return SendZmqMessage(MSG_SETTINGS, json_str.data(), json_str.size());
 }

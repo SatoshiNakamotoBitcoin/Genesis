@@ -60,6 +60,7 @@ std::unique_ptr<CZMQNotificationInterface> CZMQNotificationInterface::Create(std
     factories["pubrawtx"] = CZMQAbstractNotifier::Create<CZMQPublishRawTransactionNotifier>;
     factories["pubrawwallettx"] = CZMQAbstractNotifier::Create<CZMQPublishRawWalletTransactionNotifier>;
     factories["pubsequence"] = CZMQAbstractNotifier::Create<CZMQPublishSequenceNotifier>;
+    factories["pubsettings"] = CZMQAbstractNotifier::Create<CZMQPublishSettingsNotifier>;
 
     std::list<std::unique_ptr<CZMQAbstractNotifier>> notifiers;
     for (const auto& entry : factories)
@@ -228,6 +229,13 @@ void CZMQNotificationInterface::TransactionAddedToWallet(const CTransactionRef& 
 
     TryForEachAndRemoveFailed(notifiers, [&tx, &hashBlock](CZMQAbstractNotifier* notifier) {
         return notifier->NotifyWalletTransaction(tx, hashBlock);
+    });
+}
+
+void CZMQNotificationInterface::SettingChanged(const std::string& setting_name, const UniValue& old_value, const UniValue& new_value, const std::string& source)
+{
+    TryForEachAndRemoveFailed(notifiers, [&setting_name, &old_value, &new_value, &source](CZMQAbstractNotifier* notifier) {
+        return notifier->NotifySettingChanged(setting_name, old_value.write(), new_value.write(), source);
     });
 }
 

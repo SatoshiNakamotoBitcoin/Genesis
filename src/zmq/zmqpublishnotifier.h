@@ -84,4 +84,10 @@ public:
     bool NotifyTransactionRemoval(const CTransaction &transaction, uint64_t mempool_sequence) override;
 };
 
+class CZMQPublishSettingsNotifier : public CZMQAbstractPublishNotifier
+{
+public:
+    bool NotifySettingChanged(const std::string &setting_name, const std::string &old_value, const std::string &new_value, const std::string &source) override;
+};
+
 #endif // BITCOIN_ZMQ_ZMQPUBLISHNOTIFIER_H
