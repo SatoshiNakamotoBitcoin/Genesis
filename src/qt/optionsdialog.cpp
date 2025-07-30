@@ -15,6 +15,7 @@
 #include <qt/optionsmodel.h>
 
 #include <common/args.h>
+#include <common/settings_json.h>
 #include <common/system.h>
 #include <consensus/consensus.h> // for MAX_BLOCK_SERIALIZED_SIZE
 #include <index/blockfilterindex.h>
@@ -34,8 +35,11 @@
 #include <QApplication>
 #include <QBoxLayout>
 #include <QDataWidgetMapper>
+#include <QDateTime>
 #include <QDir>
 #include <QDoubleSpinBox>
+#include <QFile>
+#include <QFileDialog>
 #include <QFontDialog>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -44,13 +48,16 @@
 #include <QLabel>
 #include <QLocale>
 #include <QMessageBox>
+#include <QProgressDialog>
 #include <QRadioButton>
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QSpacerItem>
+#include <QStandardPaths>
 #include <QString>
 #include <QStringList>
 #include <QSystemTrayIcon>
+#include <QTextStream>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -1046,6 +1053,146 @@ void OptionsDialog::on_okButton_clicked()
 void OptionsDialog::on_cancelButton_clicked()
 {
     reject();
+}
+
+void OptionsDialog::on_exportSettingsButton_clicked()
+{
+    if (!model) {
+        return;
+    }
+
+    // Get the default save location
+    QString defaultDir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    QString defaultFileName = QStringLiteral("bitcoin-settings-") + 
+                            QDateTime::currentDateTime().toString("yyyy-MM-dd-hhmm") + 
+                            QStringLiteral(".json");
+    QString defaultPath = QDir(defaultDir).filePath(defaultFileName);
+
+    // Show file dialog for export location
+    QString fileName = QFileDialog::getSaveFileName(
+        this,
+        tr("Export Bitcoin Settings"),
+        defaultPath,
+        tr("JSON Files (*.json);;All Files (*)")
+    );
+
+    if (fileName.isEmpty()) {
+        return; // User cancelled
+    }
+
+    try {
+        // Export settings using OptionsModel
+        QString exportedData = model->exportSettings();
+        
+        // Write to file
+        QFile file(fileName);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            QMessageBox::critical(this, tr("Export Error"), 
+                                tr("Could not open file for writing:\n%1").arg(file.errorString()));
+            return;
+        }
+
+        QTextStream out(&file);
+        out << exportedData;
+        file.close();
+
+        QMessageBox::information(this, tr("Export Successful"), 
+                               tr("Settings exported successfully to:\n%1").arg(fileName));
+
+    } catch (const std::exception& e) {
+        QMessageBox::critical(this, tr("Export Error"), 
+                            tr("Failed to export settings:\n%1").arg(QString::fromStdString(e.what())));
+    }
+}
+
+void OptionsDialog::on_importSettingsButton_clicked()
+{
+    if (!model) {
+        return;
+    }
+
+    // Show file dialog for import file
+    QString fileName = QFileDialog::getOpenFileName(
+        this,
+        tr("Import Bitcoin Settings"),
+        QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation),
+        tr("JSON Files (*.json);;All Files (*)")
+    );
+
+    if (fileName.isEmpty()) {
+        return; // User cancelled
+    }
+
+    // Read file
+    QFile file(fileName);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QMessageBox::critical(this, tr("Import Error"), 
+                            tr("Could not open file for reading:\n%1").arg(file.errorString()));
+        return;
+    }
+
+    QString fileContents = QTextStream(&file).readAll();
+    file.close();
+
+    try {
+        // Preview changes before applying
+        auto previewResult = model->previewSettingsImport(fileContents);
+        
+        if (!previewResult.isValid) {
+            QMessageBox::critical(this, tr("Import Error"), 
+                                tr("Invalid settings file:\n%1").arg(previewResult.errorMessage));
+            return;
+        }
+
+        // Show preview dialog if there are changes
+        if (!previewResult.changes.isEmpty()) {
+            QString changesList;
+            for (const auto& change : previewResult.changes) {
+                changesList += QString("• %1: %2 → %3\n")
+                    .arg(change.settingName)
+                    .arg(change.oldValue) 
+                    .arg(change.newValue);
+            }
+
+            QMessageBox::StandardButton reply = QMessageBox::question(
+                this,
+                tr("Import Settings Preview"),
+                tr("The following settings will be changed:\n\n%1\n"
+                   "Do you want to proceed with the import?").arg(changesList),
+                QMessageBox::Yes | QMessageBox::No
+            );
+
+            if (reply != QMessageBox::Yes) {
+                return;
+            }
+        }
+
+        // Apply the import
+        auto importResult = model->importSettings(fileContents);
+        
+        if (importResult.success) {
+            QString message = tr("Settings imported successfully!");
+            if (importResult.restartRequired) {
+                message += "\n\n" + tr("Some settings require a restart to take effect.");
+                showRestartWarning(true);
+            }
+            
+            QMessageBox::information(this, tr("Import Successful"), message);
+            
+            // Refresh the dialog with new values
+            if (mapper) {
+                mapper->toFirst();
+            }
+            
+        } else {
+            QMessageBox::critical(this, tr("Import Error"), 
+                                tr("Failed to import settings:\n%1").arg(importResult.errorMessage));
+        }
+
+    } catch (const std::exception& e) {
+        QMessageBox::critical(this, tr("Import Error"), 
+                            tr("Failed to import settings:\n%1").arg(QString::fromStdString(e.what())));
+    }
 }
 
 void OptionsDialog::on_showTrayIcon_stateChanged(int state)

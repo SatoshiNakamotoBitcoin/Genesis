@@ -1135,6 +1135,45 @@ bc1p2q3rvn3gp…</string>
        <item>
         <layout class="QHBoxLayout" name="horizontalLayout">
          <item>
+          <widget class="QPushButton" name="exportSettingsButton">
+           <property name="text">
+            <string>&amp;Export Settings...</string>
+           </property>
+           <property name="toolTip">
+            <string>Export current settings to a JSON file</string>
+           </property>
+           <property name="autoDefault">
+            <bool>false</bool>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="importSettingsButton">
+           <property name="text">
+            <string>&amp;Import Settings...</string>
+           </property>
+           <property name="toolTip">
+            <string>Import settings from a JSON file</string>
+           </property>
+           <property name="autoDefault">
+            <bool>false</bool>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacer_Buttons">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item>
           <widget class="QPushButton" name="okButton">
            <property name="text">
             <string>&amp;OK</string>

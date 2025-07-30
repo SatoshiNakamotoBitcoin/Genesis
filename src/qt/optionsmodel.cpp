@@ -9,15 +9,16 @@
 #include <qt/bitcoinunits.h>
 #include <qt/guiconstants.h>
 #include <qt/guiutil.h>
+#include <node/interface_ui.h>
 
 #include <chainparams.h>
+#include <clientversion.h>
 #include <common/args.h>
 #include <consensus/consensus.h>
 #include <index/blockfilterindex.h>
 #include <interfaces/node.h>
 #include <kernel/mempool_options.h> // for DEFAULT_MAX_MEMPOOL_SIZE_MB, DEFAULT_MEMPOOL_EXPIRY_HOURS
 #include <mapport.h>
-#include <policy/settings.h>
 #include <net.h>
 #include <net_processing.h>
 #include <netbase.h>
@@ -28,6 +29,8 @@
 #include <policy/settings.h>
 #include <txdb.h> // for -dbcache defaults
 #include <util/moneystr.h> // for FormatMoney
+#include <util/time.h> // for GetTime
+#include <univalue.h>
 #include <util/string.h>
 #include <validation.h>    // For DEFAULT_SCRIPTCHECK_THREADS
 #include <wallet/wallet.h> // For DEFAULT_SPEND_ZEROCONF_CHANGE
@@ -46,8 +49,6 @@
 #include <QSettings>
 #include <QStringList>
 #include <QVariant>
-
-#include <univalue.h>
 
 const char *DEFAULT_GUI_PROXY_HOST = "127.0.0.1";
 
@@ -284,6 +285,31 @@ bool OptionsModel::Init(bilingual_str& error)
 
     // Ensure restart flag is unset on client startup
     setRestartRequired(false);
+    
+    // Connect to external setting change notifications
+    uiInterface.NotifySettingChanged_connect([this](const std::string& setting_name, const UniValue& new_value) {
+        QString qSettingName = QString::fromStdString(setting_name);
+        QVariant qNewValue;
+        
+        // Convert UniValue to QVariant
+        if (new_value.isBool()) {
+            qNewValue = QVariant(new_value.get_bool());
+        } else if (new_value.isNum()) {
+            if (new_value.isReal()) {
+                qNewValue = QVariant(new_value.get_real());
+            } else {
+                qNewValue = QVariant(static_cast<int>(new_value.getInt<int64_t>()));
+            }
+        } else if (new_value.isStr()) {
+            qNewValue = QVariant(QString::fromStdString(new_value.get_str()));
+        } else {
+            qNewValue = QVariant(QString::fromStdString(new_value.write()));
+        }
+        
+        // Handle the setting change on the Qt thread
+        QMetaObject::invokeMethod(this, "handleExternalSettingChange", Qt::QueuedConnection,
+                                 Q_ARG(QString, qSettingName), Q_ARG(QVariant, qNewValue));
+    });
 
     // These are Qt-only settings:
 
@@ -1503,4 +1529,244 @@ void OptionsModel::checkAndMigrate()
     // and other settings to default to false if it was set to false.
     // (https://github.com/bitcoin-core/gui/issues/567).
     node().initParameterInteraction();
+}
+
+QString OptionsModel::exportSettings()
+{
+    try {
+        // Create a UniValue object to hold all current settings
+        UniValue settingsJson(UniValue::VOBJ);
+        
+        // Add version and metadata
+        settingsJson.pushKV("version", "1.0.0");
+        settingsJson.pushKV("exported", GetTime());
+        settingsJson.pushKV("bitcoin_version", CLIENT_VERSION_IS_RELEASE ? _("release") : _("development"));
+        
+        UniValue settings(UniValue::VOBJ);
+        
+        // Export all option values
+        for (int i = 0; i < OptionIDRowCount; ++i) {
+            OptionID option = static_cast<OptionID>(i);
+            QVariant value = data(index(i, 0), Qt::EditRole);
+            
+            QString settingName = QString::fromStdString(SettingName(option));
+            QString settingValue;
+            
+            // Convert QVariant to appropriate string representation
+            switch (value.type()) {
+                case QVariant::Bool:
+                    settings.pushKV(settingName.toStdString(), value.toBool());
+                    break;
+                case QVariant::Int:
+                case QVariant::UInt:
+                case QVariant::LongLong:
+                case QVariant::ULongLong:
+                    settings.pushKV(settingName.toStdString(), value.toLongLong());
+                    break;
+                case QVariant::Double:
+                    settings.pushKV(settingName.toStdString(), value.toDouble());
+                    break;
+                default:
+                    settings.pushKV(settingName.toStdString(), value.toString().toStdString());
+                    break;
+            }
+        }
+        
+        settingsJson.pushKV("settings", settings);
+        
+        return QString::fromStdString(settingsJson.write(4)); // Pretty print with 4-space indentation
+        
+    } catch (const std::exception& e) {
+        throw std::runtime_error("Failed to export settings: " + std::string(e.what()));
+    }
+}
+
+OptionsModel::ImportPreviewResult OptionsModel::previewSettingsImport(const QString& jsonData)
+{
+    ImportPreviewResult result;
+    
+    try {
+        // Parse JSON
+        UniValue parsedJson;
+        if (!parsedJson.read(jsonData.toStdString()) || !parsedJson.isObject()) {
+            result.errorMessage = tr("Invalid JSON format");
+            return result;
+        }
+        
+        // Check if settings object exists
+        if (!parsedJson.exists("settings") || !parsedJson["settings"].isObject()) {
+            result.errorMessage = tr("No settings found in JSON file");
+            return result;
+        }
+        
+        const UniValue& settings = parsedJson["settings"];
+        
+        // Compare each setting with current values
+        for (const auto& settingPair : settings.getKeys()) {
+            const std::string& settingName = settingPair;
+            const UniValue& newValue = settings[settingName];
+            
+            // Find corresponding option
+            int optionIndex = -1;
+            for (int i = 0; i < OptionIDRowCount; ++i) {
+                if (SettingName(static_cast<OptionID>(i)) == settingName) {
+                    optionIndex = i;
+                    break;
+                }
+            }
+            
+            if (optionIndex >= 0) {
+                QVariant currentValue = data(index(optionIndex, 0), Qt::EditRole);
+                QString currentStr = currentValue.toString();
+                QString newStr;
+                
+                // Convert UniValue to string for comparison
+                if (newValue.isBool()) {
+                    newStr = newValue.get_bool() ? "true" : "false";
+                } else if (newValue.isNum()) {
+                    newStr = QString::number(newValue.get_real());
+                } else if (newValue.isStr()) {
+                    newStr = QString::fromStdString(newValue.get_str());
+                }
+                
+                // Check if values differ
+                if (currentStr != newStr) {
+                    SettingChange change;
+                    change.settingName = QString::fromStdString(settingName);
+                    change.oldValue = currentStr;
+                    change.newValue = newStr;
+                    result.changes.append(change);
+                }
+            }
+        }
+        
+        result.isValid = true;
+        return result;
+        
+    } catch (const std::exception& e) {
+        result.errorMessage = tr("Error parsing settings: %1").arg(QString::fromStdString(e.what()));
+        return result;
+    }
+}
+
+OptionsModel::ImportResult OptionsModel::importSettings(const QString& jsonData)
+{
+    ImportResult result;
+    
+    try {
+        // First validate the data
+        auto previewResult = previewSettingsImport(jsonData);
+        if (!previewResult.isValid) {
+            result.errorMessage = previewResult.errorMessage;
+            return result;
+        }
+        
+        // Parse JSON again for import
+        UniValue parsedJson;
+        parsedJson.read(jsonData.toStdString());
+        const UniValue& settings = parsedJson["settings"];
+        
+        bool needsRestart = false;
+        
+        // Apply each setting
+        for (const auto& settingPair : settings.getKeys()) {
+            const std::string& settingName = settingPair;
+            const UniValue& newValue = settings[settingName];
+            
+            // Find corresponding option
+            for (int i = 0; i < OptionIDRowCount; ++i) {
+                OptionID option = static_cast<OptionID>(i);
+                if (SettingName(option) == settingName) {
+                    QVariant qvariantValue;
+                    
+                    // Convert UniValue to QVariant
+                    if (newValue.isBool()) {
+                        qvariantValue = newValue.get_bool();
+                    } else if (newValue.isNum()) {
+                        // Check if the option expects an integer
+                        QVariant currentValue = data(index(i, 0), Qt::EditRole);
+                        if (currentValue.type() == QVariant::Int) {
+                            qvariantValue = static_cast<int>(newValue.get_real());
+                        } else {
+                            qvariantValue = newValue.get_real();
+                        }
+                    } else if (newValue.isStr()) {
+                        qvariantValue = QString::fromStdString(newValue.get_str());
+                    }
+                    
+                    // Set the option
+                    bool wasRestartRequired = isRestartRequired();
+                    bool optionSet = setData(index(i, 0), qvariantValue, Qt::EditRole);
+                    
+                    if (optionSet && !wasRestartRequired && isRestartRequired()) {
+                        needsRestart = true;
+                    }
+                    
+                    break;
+                }
+            }
+        }
+        
+        result.success = true;
+        result.restartRequired = needsRestart;
+        return result;
+        
+    } catch (const std::exception& e) {
+        result.errorMessage = tr("Error importing settings: %1").arg(QString::fromStdString(e.what()));
+        return result;
+    }
+}
+
+void OptionsModel::handleExternalSettingChange(const QString& setting_name, const QVariant& new_value)
+{
+    // Map setting names to OptionID enum values
+    QMap<QString, OptionID> settingNameMap;
+    settingNameMap["walletrbf"] = walletrbf;
+    settingNameMap["spendzeroconfchange"] = SpendZeroConfChange;
+    settingNameMap["dbcache"] = DatabaseCache;
+    settingNameMap["par"] = ThreadsScriptVerif;
+    settingNameMap["upnp"] = MapPortUPnP;
+    settingNameMap["natpmp"] = MapPortNatpmp;
+    settingNameMap["listen"] = Listen;
+    settingNameMap["server"] = Server;
+    settingNameMap["maxmempool"] = maxmempool;
+    settingNameMap["mempoolreplacement"] = mempoolreplacement;
+    settingNameMap["maxorphantx"] = maxorphantx;
+    settingNameMap["incrementalrelayfee"] = incrementalrelayfee;
+    settingNameMap["minrelaytxfee"] = minrelaytxfee;
+    settingNameMap["rejectunknownscripts"] = rejectunknownscripts;
+    settingNameMap["rejectparasites"] = rejectparasites;
+    settingNameMap["rejecttokens"] = rejecttokens;
+    
+    if (settingNameMap.contains(setting_name)) {
+        OptionID option = settingNameMap[setting_name];
+        
+        // Get current value to check if it actually changed
+        QVariant currentValue = getOption(option);
+        
+        if (currentValue != new_value) {
+            // Update the internal setting without triggering normal change signals
+            // to avoid circular updates
+            if (setOption(option, new_value)) {
+                // Emit the external change signal for UI components to respond
+                Q_EMIT settingChangedExternally(setting_name, new_value);
+                
+                qDebug() << "Setting changed externally:" << setting_name << "=" << new_value;
+                
+                // Emit specific signals for well-known settings
+                if (option == walletrbf) {
+                    // Wallet RBF setting changed
+                } else if (option == SpendZeroConfChange) {
+                    // Zero-conf change setting changed
+                } else if (option == DatabaseCache) {
+                    // Database cache setting changed
+                } else if (option == maxmempool) {
+                    // Mempool size setting changed
+                }
+                // Add more specific handling as needed
+            }
+        }
+    } else {
+        qDebug() << "Unknown external setting change:" << setting_name << "=" << new_value;
+    }
 }

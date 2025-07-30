@@ -161,6 +161,29 @@ public:
 
     interfaces::Node& node() const { return m_node; }
 
+    /* Settings export/import functionality */
+    struct SettingChange {
+        QString settingName;
+        QString oldValue;
+        QString newValue;
+    };
+
+    struct ImportPreviewResult {
+        bool isValid{false};
+        QString errorMessage;
+        QList<SettingChange> changes;
+    };
+
+    struct ImportResult {
+        bool success{false};
+        bool restartRequired{false};
+        QString errorMessage;
+    };
+
+    QString exportSettings();
+    ImportPreviewResult previewSettingsImport(const QString& jsonData);
+    ImportResult importSettings(const QString& jsonData);
+
 private:
     interfaces::Node& m_node;
     /* Qt-only settings */
@@ -196,6 +219,10 @@ private:
     // Check settings version and upgrade default values if required
     void checkAndMigrate();
 
+public Q_SLOTS:
+    // Handle external setting changes (e.g., from RPC)
+    void handleExternalSettingChange(const QString& setting_name, const QVariant& new_value);
+
 Q_SIGNALS:
     void displayUnitChanged(BitcoinUnit unit);
     void coinControlFeaturesChanged(bool);
@@ -204,6 +231,7 @@ Q_SIGNALS:
     void fontForMoneyChanged(const QFont&);
     void fontForQRCodesChanged(const FontChoice&);
     void peersTabAlternatingRowColorsChanged(bool);
+    void settingChangedExternally(const QString& setting_name, const QVariant& new_value);
 };
 
 Q_DECLARE_METATYPE(OptionsModel::FontChoice)

@@ -82,6 +82,8 @@ private Q_SLOTS:
     void setOkButtonState(bool fState);
     void on_resetButton_clicked();
     void on_openBitcoinConfButton_clicked();
+    void on_exportSettingsButton_clicked();
+    void on_importSettingsButton_clicked();
     void on_okButton_clicked();
     void on_cancelButton_clicked();
 
