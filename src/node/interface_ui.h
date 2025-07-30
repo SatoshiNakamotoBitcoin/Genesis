@@ -11,6 +11,8 @@
 #include <string>
 #include <vector>
 
+#include <univalue.h>
+
 class CBlockIndex;
 enum class SynchronizationState;
 struct bilingual_str;
@@ -98,6 +100,11 @@ public:
      * Status bar alerts changed.
      */
     ADD_SIGNALS_DECL_WRAPPER(NotifyAlertChanged, void, );
+    
+    /**
+     * Settings changed via RPC.
+     */
+    ADD_SIGNALS_DECL_WRAPPER(NotifySettingChanged, void, const std::string& setting_name, const UniValue& new_value);
 
     /**
      * Show progress e.g. for verifychain.
