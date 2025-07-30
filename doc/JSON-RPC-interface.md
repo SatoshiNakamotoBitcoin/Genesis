@@ -202,6 +202,164 @@ or the state of the mempool by an RPC that returned before this RPC. For
 example, a wallet transaction that was BIP-125-replaced in the mempool prior to
 this RPC may not yet be reflected as such in this RPC response.
 
+## Settings Export RPC Commands
+
+Bitcoin Knots provides a comprehensive settings export system for policy options and configurations. These commands enable headless deployments to access and replicate the full GUI interface without reimplementation.
+
+### Security and Permissions
+
+The settings RPC system implements fine-grained permission controls:
+
+**Permission Categories:**
+- `settings-read`: Read access to non-sensitive settings
+- `settings-read-sensitive`: Read access to sensitive settings (passwords, keys)
+- `settings-write`: Modify non-critical settings
+- `settings-write-critical`: Modify critical settings (network, security)
+- `settings-schema`: Access to settings schema for UI generation
+
+**Rate Limiting:** Maximum 50 setting changes per 5 minutes per user
+
+**Sensitive Settings:** Automatically masked unless explicitly requested with appropriate permissions
+
+For detailed security configuration, see [settings-security.md](settings-security.md).
+
+### dumpsettings
+
+Export all current settings to JSON format with optional encryption.
+
+**Syntax:** `dumpsettings ( "category" include_sensitive "encrypt_password" )`
+
+**Arguments:**
+- `category` (string, optional): Filter settings by category ("wallet", "mempool", "relay", "script", "transaction", "data_carrier", "dust", "block_creation", "network", "gui")
+- `include_sensitive` (boolean, optional, default=false): Include sensitive settings (requires settings-read-sensitive permission)
+- `encrypt_password` (string, optional): Password to encrypt the output (minimum 8 characters)
+
+**Permissions Required:** `settings-read`, optionally `settings-read-sensitive`
+
+**Example:**
+```bash
+# Basic export (sensitive settings masked)
+bitcoin-cli dumpsettings
+
+# Export wallet settings only
+bitcoin-cli dumpsettings "wallet"
+
+# Include sensitive settings
+bitcoin-cli dumpsettings "" true
+
+# Export with encryption
+bitcoin-cli dumpsettings "" false "mySecurePassword123"
+```
+
+### getsettings
+
+Retrieve specific settings or setting categories with metadata.
+
+**Syntax:** `getsettings ( "setting_name_or_pattern" )`
+
+**Arguments:**
+- `setting_name_or_pattern` (string or array, optional): Setting name, array of names, or wildcard pattern
+
+**Examples:**
+```bash
+bitcoin-cli getsettings
+bitcoin-cli getsettings "walletrbf"
+bitcoin-cli getsettings '["walletrbf", "mintxfee"]'
+bitcoin-cli getsettings "wallet.*"
+```
+
+### getsettingsschema
+
+Generate JSON Forms compatible schema for automatic UI generation.
+
+**Syntax:** `getsettingsschema ( "category" )`
+
+**Arguments:**
+- `category` (string, optional): Filter schema by category
+
+**Example:**
+```bash
+bitcoin-cli getsettingsschema
+bitcoin-cli getsettingsschema "wallet"
+```
+
+### setsetting
+
+Update an individual setting with validation and security checks.
+
+**Syntax:** `setsetting "setting_name" "new_value"`
+
+**Arguments:**
+- `setting_name` (string, required): Name of the setting to update
+- `new_value` (string, required): New value for the setting (parsed according to setting type)
+
+**Permissions Required:** 
+- `settings-write` for standard settings
+- `settings-write-critical` for critical settings (network, security)
+
+**Rate Limits:** Subject to rate limiting (50 changes per 5 minutes)
+
+**Security Notes:**
+- Critical settings (bind, port, rpcport, etc.) require elevated permissions
+- All changes are logged to audit trail
+- Sensitive values are masked in logs
+
+**Example:**
+```bash
+# Standard setting
+bitcoin-cli setsetting "walletrbf" "true"
+bitcoin-cli setsetting "maxmempool" "500"
+
+# Critical setting (requires elevated permission)
+bitcoin-cli setsetting "rpcport" "8333"
+```
+
+### updatesettings
+
+Perform bulk atomic updates of multiple settings with transactional guarantees.
+
+**Syntax:** `updatesettings "settings_json"`
+
+**Arguments:**
+- `settings_json` (object, required): JSON object with setting name-value pairs
+
+**Permissions Required:** 
+- `settings-write` for standard settings
+- `settings-write-critical` if any critical settings are included
+
+**Rate Limits:** Each setting counts toward rate limit (50 changes per 5 minutes)
+
+**Transaction Behavior:**
+- All settings are validated before any are applied
+- If any validation fails, no changes are made
+- Provides atomicity for configuration changes
+
+**Example:**
+```bash
+# Bulk update multiple settings
+bitcoin-cli updatesettings '{"walletrbf": true, "maxmempool": 400, "mempoolreplacement": "full"}'
+
+# Mixed standard and critical settings (requires elevated permissions)
+bitcoin-cli updatesettings '{"maxmempool": 500, "rpcport": 8333}'
+```
+
+### subscribesettings
+
+Subscribe to settings changes for polling-based notifications.
+
+**Syntax:** `subscribesettings ( "category" "token" "wait_for_changes" )`
+
+**Arguments:**
+- `category` (string, optional): Filter by category
+- `token` (string, optional): Previous change token for incremental updates
+- `wait_for_changes` (boolean, optional): Whether to wait for changes before returning
+
+**Example:**
+```bash
+bitcoin-cli subscribesettings
+bitcoin-cli subscribesettings "wallet"
+```
+
 ## Limitations
 
 There is a known issue in the JSON-RPC interface that can cause a node to crash if
