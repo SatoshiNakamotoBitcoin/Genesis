@@ -5,13 +5,18 @@ Security configuration for the settings RPC system.
 ## Permission Categories
 
 ### Read Permissions
-- `settings-read`: Basic read access to non-sensitive settings
-- `settings-read-sensitive`: Read access to sensitive settings (passwords, keys)
+- `settings-read`: Basic read access to all settings (sensitive values masked)
 - `settings-schema`: Access to settings schema for UI generation
 
-### Write Permissions
-- `settings-write`: Modify non-critical settings
-- `settings-write-critical`: Modify critical settings (network, security)
+### Write Permissions (Category-based)
+- `settings-write`: General write permission (required for all modifications)
+- `settings-write:wallet`: Modify wallet settings
+- `settings-write:mempool`: Modify mempool settings  
+- `settings-write:network`: Modify network settings (critical)
+- `settings-write:rpc`: Modify RPC settings (critical)
+- `settings-write:block_creation`: Modify mining/block creation settings
+
+Note: Critical categories (network, rpc) require both general write permission and category-specific permission.
 
 ## Configuration
 
@@ -21,10 +26,15 @@ Restrict settings access for specific users:
 
 ```bash
 # Read-only access
-bitcoind -rpcwhitelist=reader:dumpsettings,getsettings,getsettingsschema,subscribesettings
+bitcoind -rpcwhitelist=reader:dumpsettings,getsettingsschema,subscribesettings
 
-# Full access
-bitcoind -rpcwhitelist=admin:dumpsettings,getsettings,getsettingsschema,subscribesettings,setsetting,updatesettings
+# Wallet settings modification only
+bitcoind -rpcwhitelist=wallet_admin:dumpsettings,setsettings,updatesettings \
+         -rpcwhitelistpermissions=wallet_admin:settings-write:wallet
+
+# Full access (including critical network/rpc settings)
+bitcoind -rpcwhitelist=admin:dumpsettings,getsettingsschema,subscribesettings,setsettings,updatesettings \
+         -rpcwhitelistpermissions=admin:settings-write:network,settings-write:rpc
 ```
 
 ### rpcauth
@@ -43,28 +53,21 @@ These settings are masked in output unless explicitly requested:
 - `rpcwhitelist`, `rpcwhitelistdefault`
 - `walletpassphrase`, `walletpassphrasechange`, `encryptwallet`
 
-To include sensitive settings:
-```bash
-bitcoin-cli dumpsettings "" true  # Requires settings-read-sensitive permission
-```
+Sensitive settings are always masked in dumpsettings output for security reasons.
 
-## Critical Settings
+## Critical Settings Categories
 
-These settings require `settings-write-critical` permission:
-- Network: `bind`, `port`, `listen`, `proxy`, `onion`
-- RPC: `rpcbind`, `rpcport`
-- Access Control: `whitelist`, `whitebind`
-- Resource Limits: `maxconnections`, `maxuploadtarget`
+These categories contain settings that can affect node connectivity and security:
 
-## Rate Limiting
+### Network Category
+Requires `settings-write:network` permission:
+- `bind`, `port`, `listen`, `proxy`, `onion`
+- `whitelist`, `whitebind`  
+- `maxconnections`, `maxuploadtarget`
 
-- 50 setting changes per 5 minutes per user
-- Applies to `setsetting` and `updatesettings`
+### RPC Category  
+Requires `settings-write:rpc` permission:
+- `rpcbind`, `rpcport`
+- `rpcuser`, `rpcpassword`, `rpcauth`
+- `rpcwhitelist`, `rpcwhitelistdefault`
 
-## Encrypted Exports
-
-```bash
-bitcoin-cli dumpsettings "" false "password"
-```
-
-Returns encrypted JSON with base64 encoding.

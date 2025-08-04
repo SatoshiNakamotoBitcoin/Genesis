@@ -8,31 +8,21 @@ Bitcoin Knots provides RPC commands to export and import GUI settings for headle
 
 Export settings to JSON format.
 
-**Syntax:** `dumpsettings ( "category" include_sensitive "encrypt_password" )`
+**Syntax:** `dumpsettings ( "filter" "options" )`
 
 **Arguments:**
-- `category` (string, optional): Filter by category ("wallet", "mempool", "relay", "script", "transaction", "data_carrier", "dust", "block_creation", "network", "gui")
-- `include_sensitive` (boolean, optional, default=false): Include sensitive settings
-- `encrypt_password` (string, optional): Password to encrypt output
+- `filter` (string, optional): Category ("wallet"), specific setting ("walletrbf"), array of settings, or pattern ("wallet.*")
+- `options` (object, optional):
+  - `detailed` (boolean, default=false): Include detailed metadata (type, description, constraints, restart requirements)
+
+**Note:** Sensitive settings are always masked for security.
 
 **Examples:**
 ```bash
 bitcoin-cli dumpsettings
 bitcoin-cli dumpsettings "wallet"
-bitcoin-cli dumpsettings "" true "password"
-```
-
-### getsettings
-
-Retrieve specific settings with metadata.
-
-**Syntax:** `getsettings ( "setting_name_or_pattern" )`
-
-**Examples:**
-```bash
-bitcoin-cli getsettings
-bitcoin-cli getsettings "walletrbf"
-bitcoin-cli getsettings '["walletrbf", "mintxfee"]'
+bitcoin-cli dumpsettings "walletrbf" '{"detailed":true}'
+bitcoin-cli dumpsettings '["walletrbf", "mintxfee"]' '{"detailed":true}'
 ```
 
 ### getsettingsschema
@@ -47,27 +37,16 @@ bitcoin-cli getsettingsschema
 bitcoin-cli getsettingsschema "wallet"
 ```
 
-### setsetting
+### setsettings
 
-Update an individual setting.
+Update one or more Bitcoin Knots settings.
 
-**Syntax:** `setsetting "setting_name" "new_value"`
-
-**Example:**
-```bash
-bitcoin-cli setsetting "walletrbf" "true"
-bitcoin-cli setsetting "maxmempool" "500"
-```
-
-### updatesettings
-
-Perform bulk atomic updates of multiple settings.
-
-**Syntax:** `updatesettings "settings_json"`
+**Syntax:** `setsettings {"setting_name": value, ...}`
 
 **Example:**
 ```bash
-bitcoin-cli updatesettings '{"walletrbf": true, "maxmempool": 400}'
+bitcoin-cli setsettings '{"walletrbf": true}'
+bitcoin-cli setsettings '{"maxmempool": 500, "walletrbf": true}'
 ```
 
 ### subscribesettings
