@@ -49,37 +49,6 @@ to do so until/unless that is resolved.
 Notable changes
 ===============
 
-Settings Export System
------------------------
-
-Bitcoin Knots now includes a comprehensive settings export system that enables headless deployments to access and replicate the full GUI interface without reimplementation.
-
-### New RPC Commands
-
-- `dumpsettings`: Export all current settings to JSON format with optional category filtering
-- `getsettings`: Query specific settings or categories with detailed metadata
-- `getsettingsschema`: Generate JSON Forms compatible schema for automatic UI generation
-- `setsetting`: Update individual settings with validation
-- `updatesettings`: Perform bulk atomic updates of multiple settings
-- `subscribesettings`: Subscribe to settings changes for polling-based notifications
-
-### Features
-
-- Complete coverage of all policy options available in the GUI
-- JSON serialization with proper type handling and validation
-- Real-time change notifications via ZMQ (`-zmqpubsettings`)
-- GUI export/import functionality in Options dialog
-- Comprehensive documentation and examples in `contrib/settings-examples/`
-
-### Integration Benefits
-
-- Headless systems (Start9, Umbrel, etc.) can build responsive configuration interfaces
-- Standardized JSON schema enables automatic UI generation
-- Settings synchronization between GUI and RPC remains consistent
-- Complete audit trail for all configuration changes
-
-See `doc/settings-export.md` for detailed integration guide and `doc/JSON-RPC-interface.md` for RPC command documentation.
-
 P2P and Network Changes
 -----------------------
 
