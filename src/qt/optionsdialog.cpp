@@ -61,6 +61,8 @@
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
+#include <QDialogButtonBox>
+#include <QPushButton>
 
 ModScrollArea::ModScrollArea()
 {
@@ -1146,23 +1148,119 @@ void OptionsDialog::on_importSettingsButton_clicked()
 
         // Show preview dialog if there are changes
         if (!previewResult.changes.isEmpty()) {
-            QString changesList;
+            // Categorize changes
+            QStringList dangerousChanges;
+            QStringList normalChanges;
+            
+            // Settings that are considered dangerous/critical
+            const QSet<QString> dangerousSettings = {
+                "bind", "port", "rpcbind", "rpcport", "listen", "proxy", "onion",
+                "whitelist", "whitebind", "maxconnections", "maxuploadtarget",
+                "rpcuser", "rpcpassword", "rpcauth"
+            };
+            
             for (const auto& change : previewResult.changes) {
-                changesList += QString("• %1: %2 → %3\n")
-                    .arg(change.settingName)
-                    .arg(change.oldValue) 
+                QString displayName = model->getSettingDisplayName(change.settingName);
+                QString changeText = QString("%1: %2 → %3")
+                    .arg(displayName)
+                    .arg(change.oldValue.isEmpty() ? tr("<default>") : change.oldValue)
                     .arg(change.newValue);
+                    
+                if (dangerousSettings.contains(change.settingName)) {
+                    dangerousChanges.append(changeText);
+                } else {
+                    normalChanges.append(changeText);
+                }
             }
-
-            QMessageBox::StandardButton reply = QMessageBox::question(
-                this,
-                tr("Import Settings Preview"),
-                tr("The following settings will be changed:\n\n%1\n"
-                   "Do you want to proceed with the import?").arg(changesList),
-                QMessageBox::Yes | QMessageBox::No
-            );
-
-            if (reply != QMessageBox::Yes) {
+            
+            // Build the message with proper formatting
+            QString message = tr("The following settings will be changed:");
+            
+            if (!dangerousChanges.isEmpty()) {
+                message += "\n\n" + tr("⚠️ Critical Settings (affects network/security):") + "\n";
+                for (const QString& change : dangerousChanges) {
+                    message += "• " + change + "\n";
+                }
+            }
+            
+            if (!normalChanges.isEmpty()) {
+                if (!dangerousChanges.isEmpty()) {
+                    message += "\n";
+                }
+                message += tr("Settings:") + "\n";
+                for (const QString& change : normalChanges) {
+                    message += "• " + change + "\n";
+                }
+            }
+            
+            message += "\n" + tr("Do you want to proceed with the import?");
+            
+            bool userConfirmed = false;
+            
+            if (!dangerousChanges.isEmpty()) {
+                // Use countdown dialog for dangerous changes
+                QDialog countdownDialog(this);
+                countdownDialog.setWindowTitle(tr("Import Settings Preview - Critical Changes"));
+                countdownDialog.setModal(true);
+                
+                QVBoxLayout* layout = new QVBoxLayout(&countdownDialog);
+                
+                QLabel* iconLabel = new QLabel();
+                iconLabel->setPixmap(style()->standardPixmap(QStyle::SP_MessageBoxWarning));
+                iconLabel->setAlignment(Qt::AlignCenter);
+                layout->addWidget(iconLabel);
+                
+                QLabel* messageLabel = new QLabel(message);
+                messageLabel->setWordWrap(true);
+                layout->addWidget(messageLabel);
+                
+                QLabel* countdownLabel = new QLabel();
+                countdownLabel->setAlignment(Qt::AlignCenter);
+                countdownLabel->setStyleSheet("QLabel { font-size: 16pt; font-weight: bold; color: red; }");
+                layout->addWidget(countdownLabel);
+                
+                QDialogButtonBox* buttonBox = new QDialogButtonBox(QDialogButtonBox::Yes | QDialogButtonBox::No, &countdownDialog);
+                QPushButton* yesButton = buttonBox->button(QDialogButtonBox::Yes);
+                yesButton->setEnabled(false);
+                layout->addWidget(buttonBox);
+                
+                // Countdown timer
+                int countdownSeconds = 5;
+                QTimer* timer = new QTimer(&countdownDialog);
+                
+                auto updateCountdown = [&countdownLabel, &countdownSeconds, &yesButton, &timer]() {
+                    if (countdownSeconds > 0) {
+                        countdownLabel->setText(tr("Please wait %1 seconds before confirming...").arg(countdownSeconds));
+                        countdownSeconds--;
+                    } else {
+                        countdownLabel->setText(tr("You can now confirm the import."));
+                        countdownLabel->setStyleSheet("QLabel { font-size: 14pt; font-weight: bold; color: green; }");
+                        yesButton->setEnabled(true);
+                        timer->stop();
+                    }
+                };
+                
+                updateCountdown(); // Initial call
+                timer->start(1000); // Update every second
+                connect(timer, &QTimer::timeout, updateCountdown);
+                
+                connect(buttonBox, &QDialogButtonBox::accepted, &countdownDialog, &QDialog::accept);
+                connect(buttonBox, &QDialogButtonBox::rejected, &countdownDialog, &QDialog::reject);
+                
+                userConfirmed = (countdownDialog.exec() == QDialog::Accepted);
+            } else {
+                // Regular confirmation for non-dangerous changes
+                QMessageBox msgBox(this);
+                msgBox.setWindowTitle(tr("Import Settings Preview"));
+                msgBox.setText(message);
+                msgBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
+                msgBox.setDefaultButton(QMessageBox::No);
+                msgBox.setIcon(QMessageBox::Question);
+                
+                userConfirmed = (msgBox.exec() == QMessageBox::Yes);
+            }
+            
+            if (!userConfirmed) {
                 return;
             }
         }

@@ -1717,6 +1717,56 @@ OptionsModel::ImportResult OptionsModel::importSettings(const QString& jsonData)
     }
 }
 
+QString OptionsModel::getSettingDisplayName(const QString& settingName) const
+{
+    // Map of setting names to user-friendly display names
+    static const QMap<QString, QString> displayNames = {
+        // Wallet settings
+        {"walletrbf", tr("Enable Replace-By-Fee")},
+        {"spendzeroconfchange", tr("Spend unconfirmed change")},
+        
+        // Network settings
+        {"bind", tr("Bind address")},
+        {"port", tr("Port")},
+        {"rpcbind", tr("RPC bind address")},
+        {"rpcport", tr("RPC port")},
+        {"listen", tr("Accept connections")},
+        {"proxy", tr("Proxy")},
+        {"onion", tr("Tor address")},
+        {"whitelist", tr("Whitelist")},
+        {"whitebind", tr("Whitelist bind")},
+        {"maxconnections", tr("Maximum connections")},
+        {"maxuploadtarget", tr("Maximum upload target")},
+        
+        // RPC settings
+        {"rpcuser", tr("RPC username")},
+        {"rpcpassword", tr("RPC password")},
+        {"rpcauth", tr("RPC auth")},
+        
+        // Mempool settings
+        {"maxmempool", tr("Maximum mempool size")},
+        {"mempoolreplacement", tr("Mempool replacement policy")},
+        {"maxorphantx", tr("Maximum orphan transactions")},
+        
+        // Relay settings
+        {"incrementalrelayfee", tr("Incremental relay fee")},
+        {"minrelaytxfee", tr("Minimum relay fee")},
+        {"bytespersigop", tr("Bytes per signature operation")},
+        
+        // Script settings
+        {"rejectunknownscripts", tr("Reject unknown scripts")},
+        {"rejectparasites", tr("Reject parasites")},
+        {"rejecttokens", tr("Reject tokens")},
+        
+        // Database settings
+        {"dbcache", tr("Database cache")},
+        {"par", tr("Script verification threads")}
+    };
+    
+    // Return the display name if found, otherwise return the setting name as-is
+    return displayNames.value(settingName, settingName);
+}
+
 void OptionsModel::handleExternalSettingChange(const QString& setting_name, const QVariant& new_value)
 {
     // Map setting names to OptionID enum values

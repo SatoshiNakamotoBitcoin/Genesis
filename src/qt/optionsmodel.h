@@ -183,6 +183,7 @@ public:
     QString exportSettings();
     ImportPreviewResult previewSettingsImport(const QString& jsonData);
     ImportResult importSettings(const QString& jsonData);
+    QString getSettingDisplayName(const QString& settingName) const;
 
 private:
     interfaces::Node& m_node;
