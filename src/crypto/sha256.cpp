@@ -63,7 +63,6 @@ void Transform_2way(unsigned char* out, const unsigned char* in);
 #endif // DISABLE_OPTIMIZED_SHA256
 
 #if defined(__linux__) && defined(ENABLE_POWER8)
-#include <sys/auxv.h>
 namespace sha256_power8
 {
 void Transform_4way(unsigned char* out, const unsigned char* in);
