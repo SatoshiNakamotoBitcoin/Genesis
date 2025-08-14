@@ -295,11 +295,7 @@ bool OptionsModel::Init(bilingual_str& error)
         if (new_value.isBool()) {
             qNewValue = QVariant(new_value.get_bool());
         } else if (new_value.isNum()) {
-            if (new_value.isReal()) {
-                qNewValue = QVariant(new_value.get_real());
-            } else {
-                qNewValue = QVariant(static_cast<int>(new_value.getInt<int64_t>()));
-            }
+            qNewValue = QVariant(static_cast<int>(new_value.getInt<int64_t>()));
         } else if (new_value.isStr()) {
             qNewValue = QVariant(QString::fromStdString(new_value.get_str()));
         } else {
@@ -1540,7 +1536,7 @@ QString OptionsModel::exportSettings()
         // Add version and metadata
         settingsJson.pushKV("version", "1.0.0");
         settingsJson.pushKV("exported", GetTime());
-        settingsJson.pushKV("bitcoin_version", CLIENT_VERSION_IS_RELEASE ? _("release") : _("development"));
+        settingsJson.pushKV("bitcoin_version", CLIENT_VERSION_IS_RELEASE ? "release" : "development");
         
         UniValue settings(UniValue::VOBJ);
         
