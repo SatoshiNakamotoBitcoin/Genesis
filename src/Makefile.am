@@ -480,6 +480,7 @@ libbitcoin_node_a_SOURCES = \
   rpc/rawtransaction.cpp \
   rpc/server.cpp \
   rpc/server_util.cpp \
+  rpc/settings.cpp \
   rpc/signmessage.cpp \
   rpc/txoutproof.cpp \
   script/sigcache.cpp \
@@ -718,7 +719,9 @@ libbitcoin_common_a_SOURCES = \
   common/messages.cpp \
   common/run_command.cpp \
   common/settings.cpp \
+  common/settings_json.cpp \
   common/signmessage.cpp \
+  interfaces/settings_notifications.cpp \
   common/system.cpp \
   common/url.cpp \
   compressor.cpp \

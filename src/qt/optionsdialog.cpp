@@ -15,6 +15,7 @@
 #include <qt/optionsmodel.h>
 
 #include <common/args.h>
+#include <common/settings_json.h>
 #include <common/system.h>
 #include <consensus/consensus.h> // for MAX_BLOCK_SERIALIZED_SIZE
 #include <index/blockfilterindex.h>
@@ -34,8 +35,11 @@
 #include <QApplication>
 #include <QBoxLayout>
 #include <QDataWidgetMapper>
+#include <QDateTime>
 #include <QDir>
 #include <QDoubleSpinBox>
+#include <QFile>
+#include <QFileDialog>
 #include <QFontDialog>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -44,16 +48,21 @@
 #include <QLabel>
 #include <QLocale>
 #include <QMessageBox>
+#include <QProgressDialog>
 #include <QRadioButton>
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QSpacerItem>
+#include <QStandardPaths>
 #include <QString>
 #include <QStringList>
 #include <QSystemTrayIcon>
+#include <QTextStream>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
+#include <QDialogButtonBox>
+#include <QPushButton>
 
 ModScrollArea::ModScrollArea()
 {
@@ -1046,6 +1055,242 @@ void OptionsDialog::on_okButton_clicked()
 void OptionsDialog::on_cancelButton_clicked()
 {
     reject();
+}
+
+void OptionsDialog::on_exportSettingsButton_clicked()
+{
+    if (!model) {
+        return;
+    }
+
+    // Get the default save location
+    QString defaultDir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    QString defaultFileName = QStringLiteral("bitcoin-settings-") + 
+                            QDateTime::currentDateTime().toString("yyyy-MM-dd-hhmm") + 
+                            QStringLiteral(".json");
+    QString defaultPath = QDir(defaultDir).filePath(defaultFileName);
+
+    // Show file dialog for export location
+    QString fileName = QFileDialog::getSaveFileName(
+        this,
+        tr("Export Bitcoin Settings"),
+        defaultPath,
+        tr("JSON Files (*.json);;All Files (*)")
+    );
+
+    if (fileName.isEmpty()) {
+        return; // User cancelled
+    }
+
+    try {
+        // Export settings using OptionsModel
+        QString exportedData = model->exportSettings();
+        
+        // Write to file
+        QFile file(fileName);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            QMessageBox::critical(this, tr("Export Error"), 
+                                tr("Could not open file for writing:\n%1").arg(file.errorString()));
+            return;
+        }
+
+        QTextStream out(&file);
+        out << exportedData;
+        file.close();
+
+        QMessageBox::information(this, tr("Export Successful"), 
+                               tr("Settings exported successfully to:\n%1").arg(fileName));
+
+    } catch (const std::exception& e) {
+        QMessageBox::critical(this, tr("Export Error"), 
+                            tr("Failed to export settings:\n%1").arg(QString::fromStdString(e.what())));
+    }
+}
+
+void OptionsDialog::on_importSettingsButton_clicked()
+{
+    if (!model) {
+        return;
+    }
+
+    // Show file dialog for import file
+    QString fileName = QFileDialog::getOpenFileName(
+        this,
+        tr("Import Bitcoin Settings"),
+        QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation),
+        tr("JSON Files (*.json);;All Files (*)")
+    );
+
+    if (fileName.isEmpty()) {
+        return; // User cancelled
+    }
+
+    // Read file
+    QFile file(fileName);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QMessageBox::critical(this, tr("Import Error"), 
+                            tr("Could not open file for reading:\n%1").arg(file.errorString()));
+        return;
+    }
+
+    QString fileContents = QTextStream(&file).readAll();
+    file.close();
+
+    try {
+        // Preview changes before applying
+        auto previewResult = model->previewSettingsImport(fileContents);
+        
+        if (!previewResult.isValid) {
+            QMessageBox::critical(this, tr("Import Error"), 
+                                tr("Invalid settings file:\n%1").arg(previewResult.errorMessage));
+            return;
+        }
+
+        // Show preview dialog if there are changes
+        if (!previewResult.changes.isEmpty()) {
+            // Categorize changes
+            QStringList dangerousChanges;
+            QStringList normalChanges;
+            
+            // Settings that are considered dangerous/critical
+            const QSet<QString> dangerousSettings = {
+                "bind", "port", "rpcbind", "rpcport", "listen", "proxy", "onion",
+                "whitelist", "whitebind", "maxconnections", "maxuploadtarget",
+                "rpcuser", "rpcpassword", "rpcauth"
+            };
+            
+            for (const auto& change : previewResult.changes) {
+                QString displayName = model->getSettingDisplayName(change.settingName);
+                QString changeText = QString("%1: %2 → %3")
+                    .arg(displayName)
+                    .arg(change.oldValue.isEmpty() ? tr("<default>") : change.oldValue)
+                    .arg(change.newValue);
+                    
+                if (dangerousSettings.contains(change.settingName)) {
+                    dangerousChanges.append(changeText);
+                } else {
+                    normalChanges.append(changeText);
+                }
+            }
+            
+            // Build the message with proper formatting
+            QString message = tr("The following settings will be changed:");
+            
+            if (!dangerousChanges.isEmpty()) {
+                message += "\n\n" + tr("⚠️ Critical Settings (affects network/security):") + "\n";
+                for (const QString& change : dangerousChanges) {
+                    message += "• " + change + "\n";
+                }
+            }
+            
+            if (!normalChanges.isEmpty()) {
+                if (!dangerousChanges.isEmpty()) {
+                    message += "\n";
+                }
+                message += tr("Settings:") + "\n";
+                for (const QString& change : normalChanges) {
+                    message += "• " + change + "\n";
+                }
+            }
+            
+            message += "\n" + tr("Do you want to proceed with the import?");
+            
+            bool userConfirmed = false;
+            
+            if (!dangerousChanges.isEmpty()) {
+                // Use countdown dialog for dangerous changes
+                QDialog countdownDialog(this);
+                countdownDialog.setWindowTitle(tr("Import Settings Preview - Critical Changes"));
+                countdownDialog.setModal(true);
+                
+                QVBoxLayout* layout = new QVBoxLayout(&countdownDialog);
+                
+                QLabel* iconLabel = new QLabel();
+                iconLabel->setPixmap(style()->standardPixmap(QStyle::SP_MessageBoxWarning));
+                iconLabel->setAlignment(Qt::AlignCenter);
+                layout->addWidget(iconLabel);
+                
+                QLabel* messageLabel = new QLabel(message);
+                messageLabel->setWordWrap(true);
+                layout->addWidget(messageLabel);
+                
+                QLabel* countdownLabel = new QLabel();
+                countdownLabel->setAlignment(Qt::AlignCenter);
+                countdownLabel->setStyleSheet("QLabel { font-size: 16pt; font-weight: bold; color: red; }");
+                layout->addWidget(countdownLabel);
+                
+                QDialogButtonBox* buttonBox = new QDialogButtonBox(QDialogButtonBox::Yes | QDialogButtonBox::No, &countdownDialog);
+                QPushButton* yesButton = buttonBox->button(QDialogButtonBox::Yes);
+                yesButton->setEnabled(false);
+                layout->addWidget(buttonBox);
+                
+                // Countdown timer
+                int countdownSeconds = 5;
+                QTimer* timer = new QTimer(&countdownDialog);
+                
+                auto updateCountdown = [&countdownLabel, &countdownSeconds, &yesButton, &timer]() {
+                    if (countdownSeconds > 0) {
+                        countdownLabel->setText(tr("Please wait %1 seconds before confirming...").arg(countdownSeconds));
+                        countdownSeconds--;
+                    } else {
+                        countdownLabel->setText(tr("You can now confirm the import."));
+                        countdownLabel->setStyleSheet("QLabel { font-size: 14pt; font-weight: bold; color: green; }");
+                        yesButton->setEnabled(true);
+                        timer->stop();
+                    }
+                };
+                
+                updateCountdown(); // Initial call
+                timer->start(1000); // Update every second
+                connect(timer, &QTimer::timeout, updateCountdown);
+                
+                connect(buttonBox, &QDialogButtonBox::accepted, &countdownDialog, &QDialog::accept);
+                connect(buttonBox, &QDialogButtonBox::rejected, &countdownDialog, &QDialog::reject);
+                
+                userConfirmed = (countdownDialog.exec() == QDialog::Accepted);
+            } else {
+                // Regular confirmation for non-dangerous changes
+                QMessageBox msgBox(this);
+                msgBox.setWindowTitle(tr("Import Settings Preview"));
+                msgBox.setText(message);
+                msgBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
+                msgBox.setDefaultButton(QMessageBox::No);
+                msgBox.setIcon(QMessageBox::Question);
+                
+                userConfirmed = (msgBox.exec() == QMessageBox::Yes);
+            }
+            
+            if (!userConfirmed) {
+                return;
+            }
+        }
+
+        // Apply the import
+        auto importResult = model->importSettings(fileContents);
+        
+        if (importResult.success) {
+            QString message = tr("Settings imported successfully!");
+            if (importResult.restartRequired) {
+                message += "\n\n" + tr("Some settings require a restart to take effect.");
+                showRestartWarning(true);
+            }
+            
+            QMessageBox::information(this, tr("Import Successful"), message);
+            
+            // Refresh the dialog with new values
+            if (mapper) {
+                mapper->toFirst();
+            }
+            
+        } else {
+            QMessageBox::critical(this, tr("Import Error"), 
+                                tr("Failed to import settings:\n%1").arg(importResult.errorMessage));
+        }
+
+    } catch (const std::exception& e) {
+        QMessageBox::critical(this, tr("Import Error"), 
+                            tr("Failed to import settings:\n%1").arg(QString::fromStdString(e.what())));
+    }
 }
 
 void OptionsDialog::on_showTrayIcon_stateChanged(int state)

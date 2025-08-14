@@ -1640,6 +1640,13 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
 
     if (g_zmq_notification_interface) {
         validation_signals.RegisterValidationInterface(g_zmq_notification_interface.get());
+        // Connect settings change notifications to ZMQ
+        uiInterface.NotifySettingChanged_connect([](const std::string& setting_name, const UniValue& new_value) {
+            if (g_zmq_notification_interface) {
+                UniValue old_value; // TODO: Pass actual old value from caller
+                g_zmq_notification_interface->SettingChanged(setting_name, old_value, new_value, "RPC");
+            }
+        });
     }
 #endif
 

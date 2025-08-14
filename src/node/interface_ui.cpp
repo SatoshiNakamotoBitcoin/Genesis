@@ -23,6 +23,7 @@ struct UISignals {
     boost::signals2::signal<CClientUIInterface::NotifyNetworkActiveChangedSig> NotifyNetworkActiveChanged;
     boost::signals2::signal<CClientUIInterface::NotifyNetworkLocalChangedSig> NotifyNetworkLocalChanged;
     boost::signals2::signal<CClientUIInterface::NotifyAlertChangedSig> NotifyAlertChanged;
+    boost::signals2::signal<CClientUIInterface::NotifySettingChangedSig> NotifySettingChanged;
     boost::signals2::signal<CClientUIInterface::ShowProgressSig> ShowProgress;
     boost::signals2::signal<CClientUIInterface::NotifyBlockTipSig> NotifyBlockTip;
     boost::signals2::signal<CClientUIInterface::NotifyHeaderTipSig> NotifyHeaderTip;
@@ -44,6 +45,7 @@ ADD_SIGNALS_IMPL_WRAPPER(NotifyNumConnectionsChanged);
 ADD_SIGNALS_IMPL_WRAPPER(NotifyNetworkActiveChanged);
 ADD_SIGNALS_IMPL_WRAPPER(NotifyNetworkLocalChanged);
 ADD_SIGNALS_IMPL_WRAPPER(NotifyAlertChanged);
+ADD_SIGNALS_IMPL_WRAPPER(NotifySettingChanged);
 ADD_SIGNALS_IMPL_WRAPPER(ShowProgress);
 ADD_SIGNALS_IMPL_WRAPPER(NotifyBlockTip);
 ADD_SIGNALS_IMPL_WRAPPER(NotifyHeaderTip);
@@ -57,6 +59,7 @@ void CClientUIInterface::NotifyNumConnectionsChanged(int newNumConnections) { re
 void CClientUIInterface::NotifyNetworkActiveChanged(bool networkActive) { return g_ui_signals.NotifyNetworkActiveChanged(networkActive); }
 void CClientUIInterface::NotifyNetworkLocalChanged() { return g_ui_signals.NotifyNetworkLocalChanged(); }
 void CClientUIInterface::NotifyAlertChanged() { return g_ui_signals.NotifyAlertChanged(); }
+void CClientUIInterface::NotifySettingChanged(const std::string& setting_name, const UniValue& new_value) { return g_ui_signals.NotifySettingChanged(setting_name, new_value); }
 void CClientUIInterface::ShowProgress(const std::string& title, int nProgress, bool resume_possible) { return g_ui_signals.ShowProgress(title, nProgress, resume_possible); }
 void CClientUIInterface::NotifyBlockTip(SynchronizationState s, const CBlockIndex* i) { return g_ui_signals.NotifyBlockTip(s, i); }
 void CClientUIInterface::NotifyHeaderTip(SynchronizationState s, int64_t height, int64_t timestamp, bool presync) { return g_ui_signals.NotifyHeaderTip(s, height, timestamp, presync); }

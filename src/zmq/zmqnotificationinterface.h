@@ -42,6 +42,9 @@ protected:
     void BlockConnected(ChainstateRole role, const std::shared_ptr<const CBlock>& pblock, const CBlockIndex* pindexConnected) override;
     void BlockDisconnected(const std::shared_ptr<const CBlock>& pblock, const CBlockIndex* pindexDisconnected) override;
     void UpdatedBlockTip(const CBlockIndex *pindexNew, const CBlockIndex *pindexFork, bool fInitialDownload) override;
+    
+    // Settings notifications
+    void SettingChanged(const std::string& setting_name, const UniValue& old_value, const UniValue& new_value, const std::string& source);
 
 private:
     CZMQNotificationInterface();

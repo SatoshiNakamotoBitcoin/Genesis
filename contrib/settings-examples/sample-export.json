@@ -1,0 +1,113 @@
+{
+  "version": "27.0.0-knots",
+  "timestamp": 1690000000,
+  "settings": {
+    "wallet": {
+      "walletrbf": {
+        "value": true,
+        "type": "bool",
+        "default": true,
+        "category": "wallet",
+        "description": "Enable Replace-By-Fee for wallet transactions"
+      },
+      "spendzeroconfchange": {
+        "value": true,
+        "type": "bool", 
+        "default": true,
+        "category": "wallet",
+        "description": "Spend unconfirmed change when creating transactions"
+      },
+      "mintxfee": {
+        "value": 1000,
+        "type": "amount",
+        "default": 1000,
+        "category": "wallet",
+        "description": "Minimum transaction fee rate (satoshis per kB)"
+      }
+    },
+    "mempool": {
+      "maxmempool": {
+        "value": 300,
+        "type": "int",
+        "default": 300,
+        "category": "mempool", 
+        "description": "Maximum memory pool size in MB"
+      },
+      "mempoolreplacement": {
+        "value": true,
+        "type": "bool",
+        "default": true,
+        "category": "mempool",
+        "description": "Enable transaction replacement in mempool"
+      },
+      "maxorphantx": {
+        "value": 100,
+        "type": "int",
+        "default": 100,
+        "category": "mempool",
+        "description": "Maximum number of orphan transactions"
+      }
+    },
+    "relay": {
+      "minrelaytxfee": {
+        "value": 1000,
+        "type": "amount", 
+        "default": 1000,
+        "category": "relay",
+        "description": "Minimum relay fee rate (satoshis per kB)"
+      },
+      "incrementalrelayfee": {
+        "value": 1000,
+        "type": "amount",
+        "default": 1000, 
+        "category": "relay",
+        "description": "Incremental relay fee for transaction replacement"
+      }
+    },
+    "script": {
+      "rejectunknownscripts": {
+        "value": false,
+        "type": "bool",
+        "default": false,
+        "category": "script",
+        "description": "Reject transactions with unknown script types"
+      },
+      "rejectparasites": {
+        "value": false,
+        "type": "bool",
+        "default": false,
+        "category": "script", 
+        "description": "Reject parasite transactions"
+      }
+    },
+    "data_carrier": {
+      "datacarrier": {
+        "value": true,
+        "type": "bool",
+        "default": true,
+        "category": "data_carrier",
+        "description": "Accept OP_RETURN data carrier transactions"
+      },
+      "datacarriersize": {
+        "value": 83,
+        "type": "int",
+        "default": 83,
+        "category": "data_carrier",
+        "description": "Maximum size of OP_RETURN data"
+      }
+    }
+  },
+  "metadata": {
+    "restart_required": [
+      "maxmempool",
+      "minrelaytxfee"
+    ],
+    "categories": [
+      "wallet",
+      "mempool", 
+      "relay",
+      "script",
+      "data_carrier"
+    ]
+  }
+}

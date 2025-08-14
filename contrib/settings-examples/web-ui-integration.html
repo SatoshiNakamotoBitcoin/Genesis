@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bitcoin Knots Settings - JSON Forms Example</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@rjsf/core@5.8.2/dist/index.umd.js"></script>
+    <script src="https://unpkg.com/@rjsf/utils@5.8.2/dist/index.umd.js"></script>
+    <script src="https://unpkg.com/@rjsf/validator-ajv8@5.8.2/dist/index.umd.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css">
+    <style>
+        .container { max-width: 1200px; margin: 2rem auto; }
+        .settings-form { background: #f8f9fa; padding: 2rem; border-radius: 8px; }
+        .config-section { margin-bottom: 2rem; }
+        .status-indicator { padding: 0.5rem; border-radius: 4px; margin: 1rem 0; }
+        .status-success { background-color: #d4edda; color: #155724; }
+        .status-error { background-color: #f8d7da; color: #721c24; }
+        .rpc-config { background: #e9ecef; padding: 1rem; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <div id="app"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        const Form = RJSFCore.default;
+        const validator = RJSFValidatorAjv8.default;
+
+        function BitcoinSettingsApp() {
+            const [schema, setSchema] = useState(null);
+            const [uiSchema, setUiSchema] = useState(null);
+            const [formData, setFormData] = useState(null);
+            const [rpcConfig, setRpcConfig] = useState({
+                url: 'http://localhost:8332',
+                username: 'rpcuser',
+                password: 'rpcpass'
+            });
+            const [status, setStatus] = useState({ type: '', message: '' });
+            const [connected, setConnected] = useState(false);
+
+            const showStatus = (type, message) => {
+                setStatus({ type, message });
+                setTimeout(() => setStatus({ type: '', message: '' }), 5000);
+            };
+
+            const rpcCall = async (method, params = []) => {
+                try {
+                    const response = await fetch(rpcConfig.url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Basic ' + btoa(`${rpcConfig.username}:${rpcConfig.password}`)
+                        },
+                        body: JSON.stringify({
+                            jsonrpc: '2.0',
+                            method,
+                            params,
+                            id: Date.now()
+                        })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+
+                    const data = await response.json();
+                    if (data.error) {
+                        throw new Error(data.error.message);
+                    }
+
+                    return data.result;
+                } catch (error) {
+                    throw new Error(`RPC Error: ${error.message}`);
+                }
+            };
+
+            const loadSchema = async () => {
+                try {
+                    const result = await rpcCall('getsettingsschema');
+                    setSchema(result.schema);
+                    setUiSchema(result.uiSchema);
+                    setFormData(result.formData);
+                    setConnected(true);
+                    showStatus('success', 'Successfully loaded settings schema');
+                } catch (error) {
+                    setConnected(false);
+                    showStatus('error', `Failed to load schema: ${error.message}`);
+                }
+            };
+
+            const handleSubmit = async ({ formData }) => {
+                try {
+                    await rpcCall('updatesettings', [formData]);
+                    showStatus('success', 'Settings updated successfully');
+                    // Reload to get current values
+                    await loadSchema();
+                } catch (error) {
+                    showStatus('error', `Failed to update settings: ${error.message}`);
+                }
+            };
+
+            const handleConfigChange = (field, value) => {
+                setRpcConfig(prev => ({ ...prev, [field]: value }));
+            };
+
+            return (
+                <div className="container">
+                    <h1>Bitcoin Knots Settings Manager</h1>
+                    <p>This example demonstrates automatic UI generation from Bitcoin Knots settings schema.</p>
+
+                    <div className="config-section">
+                        <h3>RPC Configuration</h3>
+                        <div className="rpc-config">
+                            <div className="row">
+                                <div className="col-md-4">
+                                    <label className="form-label">RPC URL:</label>
+                                    <input 
+                                        type="text" 
+                                        className="form-control"
+                                        value={rpcConfig.url}
+                                        onChange={(e) => handleConfigChange('url', e.target.value)}
+                                    />
+                                </div>
+                                <div className="col-md-4">
+                                    <label className="form-label">Username:</label>
+                                    <input 
+                                        type="text" 
+                                        className="form-control"
+                                        value={rpcConfig.username}
+                                        onChange={(e) => handleConfigChange('username', e.target.value)}
+                                    />
+                                </div>
+                                <div className="col-md-4">
+                                    <label className="form-label">Password:</label>
+                                    <input 
+                                        type="password" 
+                                        className="form-control"
+                                        value={rpcConfig.password}
+                                        onChange={(e) => handleConfigChange('password', e.target.value)}
+                                    />
+                                </div>
+                            </div>
+                            <div className="mt-3">
+                                <button 
+                                    className="btn btn-primary"
+                                    onClick={loadSchema}
+                                >
+                                    {connected ? 'Reload Settings' : 'Connect & Load Settings'}
+                                </button>
+                                <span className={`ms-3 badge ${connected ? 'bg-success' : 'bg-danger'}`}>
+                                    {connected ? 'Connected' : 'Disconnected'}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {status.message && (
+                        <div className={`status-indicator status-${status.type}`}>
+                            {status.message}
+                        </div>
+                    )}
+
+                    {schema && (
+                        <div className="settings-form">
+                            <h3>Bitcoin Knots Settings</h3>
+                            <Form
+                                schema={schema}
+                                uiSchema={uiSchema}
+                                formData={formData}
+                                validator={validator}
+                                onSubmit={handleSubmit}
+                                liveValidate={true}
+                            >
+                                <div className="mt-3">
+                                    <button type="submit" className="btn btn-success">
+                                        Update Settings
+                                    </button>
+                                </div>
+                            </Form>
+                        </div>
+                    )}
+
+                    {!schema && (
+                        <div className="alert alert-info">
+                            <h4>Getting Started</h4>
+                            <p>To use this example:</p>
+                            <ol>
+                                <li>Ensure Bitcoin Core/Knots is running with RPC enabled</li>
+                                <li>Configure RPC credentials above</li>
+                                <li>Click "Connect & Load Settings" to load the schema</li>
+                                <li>Modify settings and click "Update Settings" to apply</li>
+                            </ol>
+                            <p><strong>Note:</strong> This requires the Bitcoin Knots settings export system to be installed.</p>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        ReactDOM.render(<BitcoinSettingsApp />, document.getElementById('app'));
+    </script>
+
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script>
+        // Transform JSX
+        Babel.transformScriptTags();
+    </script>
+</body>
+</html>

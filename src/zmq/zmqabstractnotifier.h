@@ -58,6 +58,8 @@ public:
     // Notifies of transactions added to mempool or appearing in blocks
     virtual bool NotifyTransaction(const CTransaction &transaction);
     virtual bool NotifyWalletTransaction(const CTransaction &transaction, const uint256 &hashBlock);
+    // Notifies of setting changes
+    virtual bool NotifySettingChanged(const std::string &setting_name, const std::string &old_value, const std::string &new_value, const std::string &source);
 
 protected:
     void* psocket{nullptr};

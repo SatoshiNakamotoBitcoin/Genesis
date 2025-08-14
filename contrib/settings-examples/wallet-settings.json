@@ -1,0 +1,73 @@
+{
+  "version": "27.0.0-knots",
+  "timestamp": 1690000000,
+  "category": "wallet",
+  "settings": {
+    "wallet": {
+      "walletrbf": {
+        "value": true,
+        "type": "bool",
+        "default": true,
+        "description": "Enable Replace-By-Fee for wallet transactions",
+        "restart_required": false
+      },
+      "spendzeroconfchange": {
+        "value": true,
+        "type": "bool",
+        "default": true,
+        "description": "Spend unconfirmed change when creating transactions",
+        "restart_required": false
+      },
+      "mintxfee": {
+        "value": 1000,
+        "type": "amount",
+        "default": 1000,
+        "description": "Minimum transaction fee rate (satoshis per kB)",
+        "restart_required": false,
+        "constraints": {
+          "min": 0,
+          "max": 100000000
+        }
+      },
+      "fallbackfee": {
+        "value": 20000,
+        "type": "amount",
+        "default": 20000,
+        "description": "Fallback fee rate when fee estimation unavailable",
+        "restart_required": false,
+        "constraints": {
+          "min": 0,
+          "max": 100000000
+        }
+      },
+      "paytxfee": {
+        "value": 0,
+        "type": "amount", 
+        "default": 0,
+        "description": "Fee rate to pay per kB of transaction data",
+        "restart_required": false,
+        "constraints": {
+          "min": 0,
+          "max": 100000000
+        }
+      },
+      "txconfirmtarget": {
+        "value": 6,
+        "type": "int",
+        "default": 6,
+        "description": "Target number of blocks for fee estimation",
+        "restart_required": false,
+        "constraints": {
+          "min": 1,
+          "max": 1008
+        }
+      }
+    }
+  },
+  "metadata": {
+    "total_settings": 6,
+    "restart_required": [],
+    "export_time": "2025-07-28T12:00:00Z",
+    "description": "Wallet-specific settings for Bitcoin Knots transaction handling"
+  }
+}
