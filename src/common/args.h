@@ -400,6 +400,16 @@ protected:
     std::optional<unsigned int> GetArgFlags(const std::string& name) const;
 
     /**
+     * Get argument help text for a given setting name
+     */
+    std::optional<std::string> GetArgHelpText(const std::string& name) const;
+
+    /**
+     * Get argument category for a given setting name
+     */
+    std::optional<OptionsCategory> GetArgCategory(const std::string& name) const;
+
+    /**
      * Get settings file path, or return false if read-write settings were
      * disabled with -nosettings.
      */
