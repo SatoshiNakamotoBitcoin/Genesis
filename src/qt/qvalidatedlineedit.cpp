@@ -92,8 +92,13 @@ void QValidatedLineEdit::setValid(bool _valid, bool with_warning, const std::vec
 
 void QValidatedLineEdit::focusInEvent(QFocusEvent *evt)
 {
-    // Clear invalid flag on focus
-    setValid(true);
+    if (!m_allow_validation_while_editing) {
+        // Clear invalid flag on focus for normal fields
+        setValid(true);
+    } else {
+        // For validation-while-editing fields, recheck validity
+        checkValidity();
+    }
 
     QLineEdit::focusInEvent(evt);
 }
@@ -108,7 +113,12 @@ void QValidatedLineEdit::focusOutEvent(QFocusEvent *evt)
 void QValidatedLineEdit::markValid()
 {
     // As long as a user is typing ensure we display state as valid
-    setValid(true);
+    // unless we're validating while editing
+    if (m_allow_validation_while_editing) {
+        checkValidity();
+    } else {
+        setValid(true);
+    }
 }
 
 void QValidatedLineEdit::clear()
@@ -122,7 +132,11 @@ void QValidatedLineEdit::setEnabled(bool enabled)
     if (!enabled)
     {
         // A disabled QValidatedLineEdit should be marked valid
+        // Clear focus first to trigger focusOutEvent
+        // required to properly clear invalid visual state
+        if (hasFocus()) { clearFocus(); }
         setValid(true);
+        setStyleSheet("");
     }
     else
     {
@@ -138,7 +152,7 @@ void QValidatedLineEdit::checkValidity()
     const bool has_warning = checkWarning();
     if (text().isEmpty())
     {
-        setValid(true);
+        setValid(m_allow_empty_input);
     }
     else if (hasAcceptableInput())
     {
@@ -156,7 +170,7 @@ void QValidatedLineEdit::checkValidity()
             } else {
                 int pos = 0;
                 validation_result = checkValidator->validate(address, pos);
-                error_locations.push_back(pos);
+                // do not provide error locations for validators that do not support it
             }
             if (validation_result == QValidator::Acceptable)
                 setValid(true, has_warning);

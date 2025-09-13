@@ -30,7 +30,15 @@
 #include <util/strencodings.h>
 #include <chrono>
 #include <cmath>
+#include <regex>
 #include <utility>
+
+#ifdef WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
+#include <arpa/inet.h>
+#endif
 
 #include <QApplication>
 #include <QBoxLayout>
@@ -278,13 +286,33 @@ OptionsDialog::OptionsDialog(QWidget* parent, bool enableWallet)
     ui->proxyPortTor->setEnabled(false);
     ui->proxyPortTor->setValidator(new QIntValidator(1, 65535, this));
 
-    connect(ui->connectSocks, &QPushButton::toggled, ui->proxyIp, &QWidget::setEnabled);
-    connect(ui->connectSocks, &QPushButton::toggled, ui->proxyPort, &QWidget::setEnabled);
-    connect(ui->connectSocks, &QPushButton::toggled, this, &OptionsDialog::updateProxyValidationState);
-
-    connect(ui->connectSocksTor, &QPushButton::toggled, ui->proxyIpTor, &QWidget::setEnabled);
-    connect(ui->connectSocksTor, &QPushButton::toggled, ui->proxyPortTor, &QWidget::setEnabled);
-    connect(ui->connectSocksTor, &QPushButton::toggled, this, &OptionsDialog::updateProxyValidationState);
+#if (QT_VERSION >= QT_VERSION_CHECK(6, 7, 0))
+    connect(ui->connectSocks, &QCheckBox::checkStateChanged, [this](const Qt::CheckState state){
+        const bool enabled = (state == Qt::Checked);
+        ui->proxyIp->setEnabled(enabled);
+        ui->proxyPort->setEnabled(enabled);
+        updateProxyValidationState();
+    });
+    connect(ui->connectSocksTor, &QCheckBox::checkStateChanged, [this](const Qt::CheckState state){
+        const bool enabled = (state == Qt::Checked);
+        ui->proxyIpTor->setEnabled(enabled);
+        ui->proxyPortTor->setEnabled(enabled);
+        updateProxyValidationState();
+    });
+#else
+    connect(ui->connectSocks, &QCheckBox::stateChanged, [this](int state){
+        const bool enabled = (state == Qt::Checked);
+        ui->proxyIp->setEnabled(enabled);
+        ui->proxyPort->setEnabled(enabled);
+        updateProxyValidationState();
+    });
+    connect(ui->connectSocksTor, &QCheckBox::stateChanged, [this](int state){
+        const bool enabled = (state == Qt::Checked);
+        ui->proxyIpTor->setEnabled(enabled);
+        ui->proxyPortTor->setEnabled(enabled);
+        updateProxyValidationState();
+    });
+#endif
 
     ui->maxuploadtarget->setMinimum(144 /* MiB/day */);
     ui->maxuploadtarget->setMaximum(std::numeric_limits<int>::max());
@@ -720,10 +748,23 @@ OptionsDialog::OptionsDialog(QWidget* parent, bool enableWallet)
     /* setup/change UI elements when proxy IPs are invalid/valid */
     ui->proxyIp->setCheckValidator(new ProxyAddressValidator(parent));
     ui->proxyIpTor->setCheckValidator(new ProxyAddressValidator(parent));
+
+    // do not allow empty input for validation for all proxy fields
+    ui->proxyIp->setAllowEmptyInput(false);
+    ui->proxyIpTor->setAllowEmptyInput(false);
+    ui->proxyPort->setAllowEmptyInput(false);
+    ui->proxyPortTor->setAllowEmptyInput(false);
+
+    // Enable validation while typing for all proxy fields
+    ui->proxyIp->setAllowValidationWhileEditing(true);
+    ui->proxyPort->setAllowValidationWhileEditing(true);
+    ui->proxyIpTor->setAllowValidationWhileEditing(true);
+    ui->proxyPortTor->setAllowValidationWhileEditing(true);
+
     connect(ui->proxyIp, &QValidatedLineEdit::validationDidChange, this, &OptionsDialog::updateProxyValidationState);
     connect(ui->proxyIpTor, &QValidatedLineEdit::validationDidChange, this, &OptionsDialog::updateProxyValidationState);
-    connect(ui->proxyPort, &QLineEdit::textChanged, this, &OptionsDialog::updateProxyValidationState);
-    connect(ui->proxyPortTor, &QLineEdit::textChanged, this, &OptionsDialog::updateProxyValidationState);
+    connect(ui->proxyPort, &QValidatedLineEdit::validationDidChange, this, &OptionsDialog::updateProxyValidationState);
+    connect(ui->proxyPortTor, &QValidatedLineEdit::validationDidChange, this, &OptionsDialog::updateProxyValidationState);
 
     if (!QSystemTrayIcon::isSystemTrayAvailable()) {
         ui->showTrayIcon->setChecked(false);
@@ -1152,6 +1193,16 @@ void OptionsDialog::on_okButton_clicked()
         model->setData(model->index(OptionsModel::dustdynamic, 0), "off");
     }
 
+    // Before mapper->submit()
+    if (!ui->connectSocks->isChecked()) {
+        ui->proxyIp->clear();
+        ui->proxyPort->clear();
+    }
+    if (!ui->connectSocksTor->isChecked()) {
+        ui->proxyIpTor->clear();
+        ui->proxyPortTor->clear();
+    }
+
     mapper->submit();
     accept();
     updateDefaultProxyNets();
@@ -1174,11 +1225,13 @@ void OptionsDialog::on_showTrayIcon_stateChanged(int state)
 
 void OptionsDialog::changeEvent(QEvent* e)
 {
+    // First let the base class update all child widget palettes
+    // required for qvalidatedlineedit invalid colors to update properly
+    QWidget::changeEvent(e);
     if (e->type() == QEvent::PaletteChange) {
+        // Then update theme colors with the new palette
         updateThemeColors();
     }
-
-    QWidget::changeEvent(e);
 }
 
 void OptionsDialog::togglePruneWarning(bool enabled)
@@ -1211,17 +1264,51 @@ void OptionsDialog::clearStatusLabel()
 
 void OptionsDialog::updateProxyValidationState()
 {
-    QValidatedLineEdit *pUiProxyIp = ui->proxyIp;
-    QValidatedLineEdit *otherProxyWidget = (pUiProxyIp == ui->proxyIpTor) ? ui->proxyIp : ui->proxyIpTor;
-    if (pUiProxyIp->isValid() && (!ui->proxyPort->isEnabled() || ui->proxyPort->text().toInt() > 0) && (!ui->proxyPortTor->isEnabled() || ui->proxyPortTor->text().toInt() > 0))
+    bool socksProxyEnabled = ui->connectSocks->isChecked();
+    bool torProxyEnabled = ui->connectSocksTor->isChecked();
+
+    bool proxyIpValid = ui->proxyIp->isValid();
+    bool proxyPortValid = ui->proxyPort->isValid();
+    bool proxyIpTorValid = ui->proxyIpTor->isValid();
+    bool proxyPortTorValid = ui->proxyPortTor->isValid();
+
+    // proxy is OK if: disabled OR (enabled AND valid ip and valid port)
+    bool socksProxyOk = !socksProxyEnabled || (proxyIpValid && proxyPortValid);
+    bool torProxyOk = !torProxyEnabled || (proxyIpTorValid && proxyPortTorValid);
+
+    // Both must be OK for the form to be valid
+    if (socksProxyOk && torProxyOk)
     {
-        setOkButtonState(otherProxyWidget->isValid()); //only enable ok button if both proxies are valid
+        setOkButtonState(true);
         clearStatusLabel();
     }
     else
     {
         setOkButtonState(false);
-        ui->statusLabel->setText(tr("The supplied proxy address is invalid."));
+        QStringList socksErrors;
+
+        if (socksProxyEnabled) {
+            if (!proxyIpValid && !proxyPortValid) {
+                socksErrors.append(tr("The supplied proxy address and port are invalid."));
+            } else if (!proxyIpValid) {
+                socksErrors.append(tr("The supplied proxy address is invalid."));
+            } else if (!proxyPortValid) {
+                socksErrors.append(tr("The supplied proxy port is invalid."));
+            }
+        }
+        if (torProxyEnabled) {
+            if (!proxyIpTorValid && !proxyPortTorValid) {
+                socksErrors.append(tr("The supplied Tor proxy address and port are invalid."));
+            } else if (!proxyIpTorValid) {
+                socksErrors.append(tr("The supplied Tor proxy address is invalid."));
+            } else if (!proxyPortTorValid) {
+                socksErrors.append(tr("The supplied Tor proxy port is invalid."));
+            }
+        }
+
+        if (socksErrors.size() > 0) {
+            ui->statusLabel->setText(socksErrors.join(" "));
+        }
     }
 }
 
@@ -1264,6 +1351,13 @@ void OptionsDialog::updateThemeColors()
         const QColor networkport_warning = networkport_dark ? QColor("#FF8080") : QColor("#FF0000");
         ui->networkPort->setStyleSheet(QStringLiteral("color: %1;").arg(networkport_warning.name()));
     }
+    // Re-trigger validation on all qvalidatedlineedit input fields to update their styling
+    // including background and text color
+    // Use setText to trigger validation
+    if (!ui->proxyIp->isValid()) ui->proxyIp->setText(ui->proxyIp->text());
+    if (!ui->proxyPort->isValid()) ui->proxyPort->setText(ui->proxyPort->text());
+    if (!ui->proxyIpTor->isValid()) ui->proxyIpTor->setText(ui->proxyIpTor->text());
+    if (!ui->proxyPortTor->isValid()) ui->proxyPortTor->setText(ui->proxyPortTor->text());
 }
 
 ProxyAddressValidator::ProxyAddressValidator(QObject *parent) :
@@ -1278,10 +1372,17 @@ QValidator::State ProxyAddressValidator::validate(QString &input, int &pos) cons
     std::string hostname;
     if (!SplitHostPort(input.toStdString(), port, hostname) || port != 0) return QValidator::Invalid;
 
-    CService serv(LookupNumeric(input.toStdString(), DEFAULT_GUI_PROXY_PORT));
-    Proxy addrProxy = Proxy(serv, true);
-    if (addrProxy.IsValid())
+    // Check if it's a valid IPv4 address
+    struct sockaddr_in sa4;
+    if (inet_pton(AF_INET, hostname.c_str(), &sa4.sin_addr) == 1) {
         return QValidator::Acceptable;
+    }
+
+    // Check if it's a valid IPv6 address
+    struct sockaddr_in6 sa6;
+    if (inet_pton(AF_INET6, hostname.c_str(), &sa6.sin6_addr) == 1) {
+        return QValidator::Acceptable;
+    }
 
     return QValidator::Invalid;
 }
